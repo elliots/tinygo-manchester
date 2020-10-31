@@ -1,0 +1,152 @@
+<html>
+<body>
+	<form>
+	Enter your message: <br />
+	<input type="text" name="inputbox" value="">
+	<input type="button" name="button" value="Program" onClick="messageInput(this.form)">
+	</form>
+
+	<canvas id="flashy" style="width: 300px; height: 300px"></div>
+
+<script>
+var pad = ['pad', true, true, true, true, true, true, true, true];
+var preamble = ["pre", false, true, false, false];
+
+var queue = [];
+var clock = 400;
+var current, last, nextChange;
+function step(timestamp) {
+	if (nextChange == null || (queue.length == 0 && current == null)) {
+		nextChange = timestamp + clock/2
+		window.requestAnimationFrame(step);
+		return
+	}
+
+	if (timestamp >= nextChange) {
+		
+		if (last != null) {
+			console.log("interval", timestamp - last)
+		}
+
+		last = timestamp
+		nextChange += clock/2
+
+		if (current == null) {
+			current = queue.shift();
+			if (typeof current === 'string') {
+				console.log(current)
+				current = queue.shift()
+			}
+			fill(current? 'black' : 'white')
+		} else {
+			fill(current? 'white' : 'black')
+			current = null
+		}
+	}
+
+	window.requestAnimationFrame(step);
+}
+window.requestAnimationFrame(step);
+
+var canvas = null;
+var ctx = null;
+function fill(colour) {
+	if (ctx == null) {
+		canvas = document.getElementById("flashy");
+		ctx = canvas.getContext("2d");
+		
+	}
+	ctx.fillStyle = colour;
+	ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function sendBits(bits) {
+	for (var i = 0; i < bits.length; i++) {
+		queue.push(bits[i])
+	}
+}
+
+function toUTF8Array(str) {
+    let utf8 = [];
+    for (let i = 0; i < str.length; i++) {
+        let charcode = str.charCodeAt(i);
+        if (charcode < 0x80) utf8.push(charcode);
+        else if (charcode < 0x800) {
+            utf8.push(0xc0 | (charcode >> 6),
+                      0x80 | (charcode & 0x3f));
+        }
+        else if (charcode < 0xd800 || charcode >= 0xe000) {
+            utf8.push(0xe0 | (charcode >> 12),
+                      0x80 | ((charcode>>6) & 0x3f),
+                      0x80 | (charcode & 0x3f));
+        }
+        // surrogate pair
+        else {
+            i++;
+            // UTF-16 encodes 0x10000-0x10FFFF by
+            // subtracting 0x10000 and splitting the
+            // 20 bits of 0x0-0xFFFFF into two halves
+            charcode = 0x10000 + (((charcode & 0x3ff)<<10)
+                      | (str.charCodeAt(i) & 0x3ff));
+            utf8.push(0xf0 | (charcode >>18),
+                      0x80 | ((charcode>>12) & 0x3f),
+                      0x80 | ((charcode>>6) & 0x3f),
+                      0x80 | (charcode & 0x3f));
+        }
+    }
+    return utf8;
+}
+
+function sendBytes(data) {
+	data.forEach(function(b) {
+		sendBits(b.toString(2).padStart(8, '0').split('').map(v => {return v == '1'}))
+		// for (j = 0; j < 8; j++) {
+		// 	queue.push(!!(b>>(7-j)&0x01))
+		// }
+	})
+}
+
+function sendMessage(message) {
+	// send a few padding values for syncing
+	sendBits(pad)
+
+	console.log('queue after pad', queue)
+
+	// send the preamble
+	sendBits(preamble)
+	console.log('queue after preamble', queue)
+
+
+	console.log("message", message)
+	// convert message to bytes
+	var messageBytes = toUTF8Array(message);
+	// for (var i = 0; i < message.length; i++){  
+	// 	console.log("hihi", message.charCodeAt(i))
+	// 	messageBytes.push(message.charCodeAt(i));
+	// }
+
+	console.log("message bytes", messageBytes)
+
+	queue.push('len')
+
+	console.log("length", messageBytes.length)
+
+	// send message length
+	sendBits(messageBytes.length.toString(2).padStart(8, '0').split('').map(v => {return v == '1'}).reverse());
+
+	console.log('queue after length', queue)
+
+	queue.push('msg')
+	
+	// send message
+	sendBytes(messageBytes)
+
+	console.log('queue after msg', queue)
+}
+
+function messageInput(form) {
+	sendMessage(form.inputbox.value);
+}
+</script>
+</body>
+</html>
